@@ -1,6 +1,7 @@
 import os
 import asyncio
 import requests
+import re  # <--- این ماژول برای تمیزکاری اضافه شد
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -19,71 +20,100 @@ TARGET_CHANNELS = [
 ]
 
 def log(msg):
-    """تابع برای چاپ لاگ با flush که حتما نمایش داده بشه"""
+    """تابع برای چاپ لاگ"""
     print(msg, flush=True)
 
 def send_text_via_bridge(text):
     try:
+        # ارسال متن تمیز شده بدون هیچ علامت اضافه
         requests.post(f"{BRIDGE_URL}/send_text", json={"text": text}, timeout=10)
-        log("      ✅ Text sent to Bale via Bridge")
+        log("      ✅ Clean Config sent to Bale")
     except Exception as e:
         log(f"      ❌ Bridge Text Error: {e}")
 
-def send_file_via_bridge(path, caption):
+def send_file_via_bridge(path):
     try:
         with open(path, 'rb') as f:
             files = {'file': f}
-            data = {'caption': caption}
+            # کپشن رو حذف کردیم که تبلیغات نیاد
+            data = {'caption': ""} 
             requests.post(f"{BRIDGE_URL}/send_file", data=data, files=files, timeout=60)
-        log("      ✅ File sent to Bale via Bridge")
+        log("      ✅ File sent (No Caption)")
     except Exception as e:
         log(f"      ❌ Bridge File Error: {e}")
+
+def extract_configs(text):
+    """
+    این تابع مثل الک عمل میکنه.
+    متن رو میگیره و فقط کانفیگ های سالم رو میکشه بیرون.
+    """
+    if not text:
+        return []
+    
+    # الگوی پیدا کردن کانفیگ‌ها (شروع با پروتکل، پایان با فاصله یا خط بعد)
+    pattern = r'(vless|vmess|trojan|ss)://[\S]+'
+    
+    found_configs = re.findall(pattern, text)
+    return found_configs
 
 async def main():
     try:
         client = TelegramClient(StringSession(LOGIN_KEY), API_ID, API_HASH)
         await client.start()
         
+        # بررسی پیام‌های 20 دقیقه اخیر (یکم بیشتر گذاشتیم که چیزی جا نیفته)
         now = datetime.now(timezone.utc)
-        time_limit = now - timedelta(minutes=16) 
+        time_limit = now - timedelta(minutes=20) 
 
-        log(f"--- 🕒 Checking messages since: {time_limit.strftime('%H:%M:%S')} ---")
+        log(f"--- 🧹 Smart Bot Started at: {now.strftime('%H:%M')} ---")
 
         for ch in TARGET_CHANNELS:
             try:
-                log(f"👉 Checking {ch}...") # <--- این خط رو اضافه کردم که خیالت راحت شه
+                # log(f"👉 Scanning {ch}...") 
                 
-                msgs = await client.get_messages(ch, limit=10)
-                found = False
+                msgs = await client.get_messages(ch, limit=15)
+                found_count = 0
                 
                 for m in msgs:
+                    # فقط پیام‌های جدید
                     if m.date > time_limit:
-                        keywords = ['vless://', 'vmess://', 'trojan://', 'ss://', 'napsternet', '.npvt']
                         
-                        if m.file and m.file.size < 20 * 1024 * 1024:
-                            log(f"   ⬇️ Found New File in {ch}")
-                            path = await m.download_media()
-                            caption = m.text or f"File from {ch}"
-                            send_file_via_bridge(path, caption)
-                            os.remove(path)
-                            found = True
-                        
-                        elif m.text and any(k in m.text.lower() for k in keywords):
-                            log(f"   📝 Found New Config in {ch}")
-                            final_text = f"{m.text}\n\n🆔 {ch}"
-                            send_text_via_bridge(final_text)
-                            found = True
+                        # 1. اگر فایل بود (مثل .npvt)
+                        if m.file:
+                            # چک کردن حجم (زیر 20 مگ) و پسوند فایل
+                            file_name = m.file.name if m.file.name else ""
+                            allowed_exts = ['.npvt', '.napsternetv', '.apk', '.conf']
+                            
+                            # اگر پسوند فایل یکی از موارد بالا بود یا کلا فایل ناشناس بود
+                            if m.file.size < 20 * 1024 * 1024: 
+                                log(f"    ⬇️ Downloading File from {ch}")
+                                path = await m.download_media()
+                                send_file_via_bridge(path) # بدون کپشن ارسال میشه
+                                os.remove(path)
+                                found_count += 1
+
+                        # 2. اگر متن بود (کانفیگ متنی)
+                        elif m.text:
+                            # استخراج کانفیگ‌های تمیز
+                            clean_configs = extract_configs(m.text)
+                            
+                            if clean_configs:
+                                log(f"    📝 Found {len(clean_configs)} valid configs in {ch}")
+                                # کانفیگ‌ها رو با دو تا اینتر فاصله به هم می‌چسبونیم
+                                final_message = "\n\n".join(clean_configs)
+                                send_text_via_bridge(final_message)
+                                found_count += 1
                     else:
                         break
                 
-                if not found:
-                    log(f"   💤 No new messages in {ch}")
+                if found_count > 0:
+                    log(f"    ✅ Processed {found_count} items from {ch}")
 
             except Exception as e:
                 log(f"⚠️ Error checking {ch}: {e}")
 
         await client.disconnect()
-        log("--- 🏁 Cycle Finished Successfully ---")
+        log("--- 🏁 Cycle Finished ---")
         
     except Exception as e:
         log(f"❌ CRITICAL ERROR: {e}")
