@@ -1,8 +1,8 @@
 name: Check Telegram & Send to Bale
 
 on:
-  schedule:
-    - cron: '*/20 * * * *'
+  repository_dispatch:
+    types: [start-bot-trigger]
   workflow_dispatch:
 
 jobs:
