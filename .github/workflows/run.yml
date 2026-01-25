@@ -28,4 +28,4 @@ jobs:
           APP_HASH: ${{ secrets.APP_HASH }}
           BALE_TOKEN: ${{ secrets.BALE_TOKEN }}
           LOGIN_KEY: ${{ secrets.LOGIN_KEY }}
-        run: python test_file.py
+        run: python bot.py
