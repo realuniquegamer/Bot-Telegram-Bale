@@ -2,7 +2,7 @@ name: Check Telegram & Send to Bale
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # هر 15 دقیقه اجرا شو
+  - cron: '*/20 * * * *'
   workflow_dispatch:      # قابلیت اجرای دستی برای تست
 
 jobs:
