@@ -12,7 +12,7 @@ API_HASH = os.environ["APP_HASH"]
 LOGIN_KEY = os.environ["LOGIN_KEY"]
 
 # آدرس پل (Bridge)
-BRIDGE_URL = 'https://kioto-osano-manager-bot.hf.space'
+BRIDGE_URL = 'https://bahadorjadid-py-text-processor.hf.space'
 
 # لیست کانال‌های هدف
 TARGET_CHANNELS = [
