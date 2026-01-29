@@ -11,7 +11,7 @@ API_ID = int(os.environ["APP_ID"])
 API_HASH = os.environ["APP_HASH"]
 LOGIN_KEY = os.environ["LOGIN_KEY"]
 
-# آدرس پل (Bridge)
+# آدرس پل (Bridge) - همون آدرس جدیدی که ست کردیم
 BRIDGE_URL = 'https://bahadorjadid-py-text-processor.hf.space'
 
 # لیست کانال‌های هدف
@@ -46,20 +46,25 @@ def send_file_via_bridge(path):
 
 def extract_configs(text):
     """
-    مهم‌ترین بخش: استخراج هوشمند لینک‌ها
-    این تابع متن رو میگرده و فقط لینک‌های سالم رو در میاره.
+    نسخه اصلاح شده و دقیق:
+    1. لینک رو پیدا میکنه.
+    2. علامت‌های مزاحم مثل ` و ' و " و پرانتز رو از تهش پاک میکنه.
     """
     if not text:
         return []
     
-    # --- فیکس نهایی ---
-    # عبارت (?:...) یعنی "این بخش رو پیدا کن ولی به عنوان نتیجه جداگانه برنگردون"
-    # این باعث میشه کل لینک (شامل پروتکل و بقیه آدرس) انتخاب بشه
+    # مرحله 1: پیدا کردن خام لینک‌ها
     pattern = r'(?:vless|vmess|trojan|ss)://[\S]+'
+    raw_configs = re.findall(pattern, text)
     
-    # پیدا کردن تمام موارد مطابق الگو
-    found_configs = re.findall(pattern, text)
-    return found_configs
+    clean_list = []
+    for conf in raw_configs:
+        # مرحله 2: پاکسازی نهایی (Stripping)
+        # هر چیزی که توی پرانتز پایین هست رو از اول و آخر لینک حذف میکنه
+        clean_conf = conf.strip('`"\'()[]<>')
+        clean_list.append(clean_conf)
+        
+    return clean_list
 
 async def main():
     try:
@@ -92,14 +97,13 @@ async def main():
                                 file_name = m.file.name.lower() if m.file.name else ""
 
                                 # شرط: یا پسوندش توی لیست باشه، یا کلا فایل ناشناس باشه (ریسک کم)
-                                # معمولا کانال‌ها فایل‌های نامربوط کم میذارن، ولی این فیلتر خوبیه
                                 if file_name and any(file_name.endswith(ext) for ext in allowed_exts):
                                     log(f"    ⬇️ Downloading Config File from {ch}")
                                     path = await m.download_media()
                                     send_file_via_bridge(path)
                                     os.remove(path) # پاک کردن فایل از حافظه موقت
                                     found_count += 1
-                                # اگر فایل اسم نداشت ولی کوچیک بود هم میگیریم (محض احتیاط)
+                                # اگر فایل اسم نداشت ولی کوچیک بود هم میگیریم
                                 elif not file_name:
                                      log(f"    ⬇️ Downloading Unnamed File from {ch}")
                                      path = await m.download_media()
@@ -109,12 +113,12 @@ async def main():
 
                         # --- حالت دوم: پیام متنی است (لینک Vless/Vmess) ---
                         elif m.text:
-                            # کانفیگ‌ها رو میکشیم بیرون
+                            # کانفیگ‌ها رو میکشیم بیرون و تمیز میکنیم
                             clean_configs = extract_configs(m.text)
                             
                             if clean_configs:
                                 log(f"    📝 Found {len(clean_configs)} valid configs in {ch}")
-                                # کانفیگ‌ها رو با دو خط فاصله به هم میچسبونیم که قاتی نشن
+                                # کانفیگ‌ها رو با دو خط فاصله به هم میچسبونیم
                                 final_message = "\n\n".join(clean_configs)
                                 send_text_via_bridge(final_message)
                                 found_count += 1
