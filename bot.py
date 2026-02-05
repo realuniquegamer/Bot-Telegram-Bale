@@ -90,27 +90,25 @@ async def main():
                         
                         # --- حالت اول: پیام فایل است (مثل .npvt) ---
                         if m.file:
+                            # [اصلاح مهم]: اگر پیام عکس، ویدیو، ویس یا استیکر بود، کلا نادیده بگیر و رد شو
+                            if getattr(m, 'photo', None) or getattr(m, 'video', None) or getattr(m, 'voice', None) or getattr(m, 'sticker', None):
+                                continue
+
                             # چک کردن حجم (زیر 20 مگابایت)
                             if m.file.size < 20 * 1024 * 1024: 
                                 # لیست پسوندهای مجاز
                                 allowed_exts = ['.npvt', '.napsternetv', '.apk', '.conf']
                                 file_name = m.file.name.lower() if m.file.name else ""
 
-                                # شرط: یا پسوندش توی لیست باشه، یا کلا فایل ناشناس باشه (ریسک کم)
+                                # شرط: فقط و فقط اگر پسوندش توی لیست بالا باشه دانلود میکنه
+                                # (اون قسمت که فایل‌های بدون اسم رو دانلود میکرد حذف شد تا عکس‌ها قاطی نشن)
                                 if file_name and any(file_name.endswith(ext) for ext in allowed_exts):
                                     log(f"    ⬇️ Downloading Config File from {ch}")
                                     path = await m.download_media()
                                     send_file_via_bridge(path)
                                     os.remove(path) # پاک کردن فایل از حافظه موقت
                                     found_count += 1
-                                # اگر فایل اسم نداشت ولی کوچیک بود هم میگیریم
-                                elif not file_name:
-                                     log(f"    ⬇️ Downloading Unnamed File from {ch}")
-                                     path = await m.download_media()
-                                     send_file_via_bridge(path)
-                                     os.remove(path)
-                                     found_count += 1
-
+                                
                         # --- حالت دوم: پیام متنی است (لینک Vless/Vmess) ---
                         elif m.text:
                             # کانفیگ‌ها رو میکشیم بیرون و تمیز میکنیم
