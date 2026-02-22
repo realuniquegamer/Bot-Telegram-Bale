@@ -88,7 +88,7 @@ async def main_bot_logic():
         for ch in TARGET_CHANNELS:
             try:
                 # گرفتن 15 پیام آخر کانال
-                msgs = await client.get_messages(ch, limit=15)
+                msgs = await client.get_messages(ch, limit=30)
                 found_count = 0
                 
                 for m in msgs:
