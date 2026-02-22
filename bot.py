@@ -5,11 +5,14 @@ import re  # ماژول برای تمیزکاری متن
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
+from flask import Flask
+from threading import Thread
 
 # --- تنظیمات و دریافت اطلاعات سری ---
-API_ID = int(os.environ["APP_ID"])
-API_HASH = os.environ["APP_HASH"]
-LOGIN_KEY = os.environ["LOGIN_KEY"]
+# از get استفاده کردیم تا موقع روشن شدن اولیه سرور رندر، ارور نده
+API_ID = int(os.environ.get("APP_ID", 0))
+API_HASH = os.environ.get("APP_HASH", "")
+LOGIN_KEY = os.environ.get("LOGIN_KEY", "")
 
 # آدرس پل (Bridge) - همون آدرس جدیدی که ست کردیم
 BRIDGE_URL = 'https://bahadorjadid-py-text-processor.hf.space'
@@ -19,6 +22,9 @@ TARGET_CHANNELS = [
     '@Marambashi2', '@zedmodeonvpn', '@lightning6', 
     '@servergod2', '@TEHRANARGO', '@DirectVPN', '@prrofile_purple'
 ]
+
+# ساخت اپلیکیشن وب برای رندر
+app = Flask(__name__)
 
 def log(msg):
     """تابع برای چاپ لاگ در کنسول"""
@@ -66,7 +72,8 @@ def extract_configs(text):
         
     return clean_list
 
-async def main():
+async def main_bot_logic():
+    """این همون تابع main قبلی خودته که اسمش رو عوض کردیم تا با وب‌سرور قاطی نشه"""
     try:
         # اتصال به تلگرام
         client = TelegramClient(StringSession(LOGIN_KEY), API_ID, API_HASH)
@@ -136,5 +143,25 @@ async def main():
     except Exception as e:
         log(f"❌ CRITICAL ERROR: {e}")
 
+def start_background_loop():
+    """این تابع ربات رو تو پس‌زمینه اجرا می‌کنه تا سرور قفل نکنه"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main_bot_logic())
+    loop.close()
+
+@app.route('/')
+def home():
+    """آدرس اصلی که نشون میده ربات روشنه"""
+    return "VPN Bot is Alive and running on Render!"
+
+@app.route('/run')
+def trigger():
+    """هر بار سایت کرون‌جاب این آدرس رو باز کنه، ربات یک دور کارش رو انجام میده"""
+    Thread(target=start_background_loop).start()
+    return "Triggered bot successfully!", 200
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    # پورت رو رندر خودش مشخص می‌کنه، اگر نبود 10000 میذاریم
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
