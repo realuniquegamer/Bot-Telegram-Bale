@@ -52,16 +52,21 @@ def send_file_via_bridge(path):
 
 def extract_configs(text):
     """
-    نسخه اصلاح شده و دقیق:
+    نسخه ارتقا یافته: پیدا کردن کانفیگ‌های V2Ray + پراکسی‌های تلگرام
     1. لینک رو پیدا میکنه.
-    2. علامت‌های مزاحم مثل ` و ' و " و پرانتز رو از تهش پاک میکنه.
+    2. علامت‌های مزاحم رو از تهش پاک میکنه.
     """
     if not text:
         return []
     
-    # مرحله 1: پیدا کردن خام لینک‌ها
-    pattern = r'(?:vless|vmess|trojan|ss)://[\S]+'
-    raw_configs = re.findall(pattern, text)
+    # پترن اول: کانفیگ‌های Vless, Vmess, Trojan, SS
+    pattern_vpn = r'(?:vless|vmess|trojan|ss)://[\S]+'
+    
+    # پترن دوم: پراکسی‌های مخصوص خود تلگرام (هم t.me و هم tg://)
+    pattern_proxy = r'(?:https?://t\.me/proxy\?|tg://proxy\?)[\S]+'
+    
+    # ترکیب هر دو پترن برای شکار تمام لینک‌ها
+    raw_configs = re.findall(f'{pattern_vpn}|{pattern_proxy}', text)
     
     clean_list = []
     for conf in raw_configs:
@@ -87,46 +92,44 @@ async def main_bot_logic():
 
         for ch in TARGET_CHANNELS:
             try:
-                # گرفتن 15 پیام آخر کانال
-                msgs = await client.get_messages(ch, limit=30)
+                # گرفتن 200 پیام آخر برای گروه‌های شلوغ
+                msgs = await client.get_messages(ch, limit=200)
                 found_count = 0
                 
                 for m in msgs:
                     # فقط پیام‌هایی که جدیدتر از 20 دقیقه پیش هستند
                     if m.date > time_limit:
                         
-                        # --- حالت اول: پیام فایل است (مثل .npvt) ---
-                        if m.file:
-                            # [اصلاح مهم]: اگر پیام عکس، ویدیو، ویس یا استیکر بود، کلا نادیده بگیر و رد شو
-                            if getattr(m, 'photo', None) or getattr(m, 'video', None) or getattr(m, 'voice', None) or getattr(m, 'sticker', None):
-                                continue
-
-                            # چک کردن حجم (زیر 20 مگابایت)
-                            if m.file.size < 20 * 1024 * 1024: 
-                                # لیست پسوندهای مجاز
-                                allowed_exts = ['.npvt', '.napsternetv', '.apk', '.conf']
-                                file_name = m.file.name.lower() if m.file.name else ""
-
-                                # شرط: فقط و فقط اگر پسوندش توی لیست بالا باشه دانلود میکنه
-                                # (اون قسمت که فایل‌های بدون اسم رو دانلود میکرد حذف شد تا عکس‌ها قاطی نشن)
-                                if file_name and any(file_name.endswith(ext) for ext in allowed_exts):
-                                    log(f"    ⬇️ Downloading Config File from {ch}")
-                                    path = await m.download_media()
-                                    send_file_via_bridge(path)
-                                    os.remove(path) # پاک کردن فایل از حافظه موقت
-                                    found_count += 1
-                                
-                        # --- حالت دوم: پیام متنی است (لینک Vless/Vmess) ---
-                        elif m.text:
-                            # کانفیگ‌ها رو میکشیم بیرون و تمیز میکنیم
+                        # --- اول چک کردن متن (حتی اگر پیام عکس دار باشه کپشنش رو می‌خونه) ---
+                        # این بخش از elif خارج شد تا اگر پیام هم عکس داشت هم متن، متن جا نیفته
+                        if m.text:
+                            # کانفیگ‌ها و پراکسی‌ها رو میکشیم بیرون
                             clean_configs = extract_configs(m.text)
                             
                             if clean_configs:
-                                log(f"    📝 Found {len(clean_configs)} valid configs in {ch}")
+                                log(f"    📝 Found {len(clean_configs)} valid configs/proxies in {ch}")
                                 # کانفیگ‌ها رو با دو خط فاصله به هم میچسبونیم
                                 final_message = "\n\n".join(clean_configs)
                                 send_text_via_bridge(final_message)
                                 found_count += 1
+
+                        # --- دوم چک کردن فایل دانلودی ---
+                        if m.file:
+                            # [اصلاح مهم]: اگر پیام عکس، ویدیو، ویس یا استیکر بود، کلا فایلش رو دانلود نکن
+                            if not (getattr(m, 'photo', None) or getattr(m, 'video', None) or getattr(m, 'voice', None) or getattr(m, 'sticker', None)):
+                                # چک کردن حجم (زیر 20 مگابایت)
+                                if m.file.size < 20 * 1024 * 1024: 
+                                    # لیست پسوندهای مجاز
+                                    allowed_exts = ['.npvt', '.napsternetv', '.apk', '.conf']
+                                    file_name = m.file.name.lower() if m.file.name else ""
+
+                                    # شرط: فقط و فقط اگر پسوندش توی لیست بالا باشه دانلود میکنه
+                                    if file_name and any(file_name.endswith(ext) for ext in allowed_exts):
+                                        log(f"    ⬇️ Downloading Config File from {ch}")
+                                        path = await m.download_media()
+                                        send_file_via_bridge(path)
+                                        os.remove(path) # پاک کردن فایل از حافظه موقت
+                                        found_count += 1
                     else:
                         # اگر به پیام‌های قدیمی رسیدیم، دیگه ادامه نده
                         break
@@ -158,7 +161,8 @@ def home():
 @app.route('/run')
 def trigger():
     """هر بار سایت کرون‌جاب این آدرس رو باز کنه، ربات یک دور کارش رو انجام میده"""
-    Thread(target=start_background_loop).start()
+    # کلمه daemon=True اضافه شد تا به محض دریافت دستور، به کرون‌جاب اوکی بده و قطع کنه
+    Thread(target=start_background_loop, daemon=True).start()
     return "Triggered bot successfully!", 200
 
 if __name__ == '__main__':
