@@ -20,7 +20,7 @@ BRIDGE_URL = 'https://bahadorjadid-py-text-processor.hf.space'
 # لیست کانال‌های هدف
 TARGET_CHANNELS = [
     '@Marambashi2', '@zedmodeonvpn', '@lightning6', 
-    '@servergod2', '@TEHRANARGO', '@DirectVPN', '@prrofile_purple'
+    '@servergod2', '@TEHRANARGO', '@DirectVPN', '@prrofile_purple', '@Gp_config'
 ]
 
 # ساخت اپلیکیشن وب برای رندر
