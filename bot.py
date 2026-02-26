@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from flask import Flask
-from threading import Thread
+from threading import Thread, Lock
 
 # --- تنظیمات و دریافت اطلاعات سری ---
 API_ID = int(os.environ.get("APP_ID", 0))
@@ -25,6 +25,10 @@ TARGET_CHANNELS = [
 DB_FILE = 'last_processed_ids.json'
 
 app = Flask(__name__)
+
+# --- قفل ضد تداخل برای کرون جاب ---
+is_bot_running = False
+lock = Lock()
 
 def log(msg):
     """تابع برای چاپ لاگ در کنسول"""
@@ -92,7 +96,7 @@ async def main_bot_logic():
         db = load_db()
         
         # زمان جایگزین: اگر دیتابیس خالی بود (مثلا دفعه اول)، فقط 15 دقیقه اخیر رو چک کن 
-        # تا یهو 200 تا پیام قدیمی رو رگباری نفرسته تو گروه
+        # تا یهو پیام‌های قدیمی رو رگباری نفرسته تو گروه
         now = datetime.now(timezone.utc)
         fallback_limit = now - timedelta(minutes=15) 
 
@@ -100,30 +104,25 @@ async def main_bot_logic():
 
         for ch in TARGET_CHANNELS:
             try:
-                # گرفتن 200 پیام آخر
-                msgs = await client.get_messages(ch, limit=200)
+                # گرفتن 400 پیام آخر (ظرفیت بیشتر برای احتیاط)
+                msgs = await client.get_messages(ch, limit=400)
                 found_count = 0
                 
                 # خواندن آخرین آیدی پردازش شده این کانال
                 last_processed_id = db.get(ch, 0)
                 max_id_this_run = last_processed_id
                 
-                for m in msgs:
-                    # 🔴 سیستم ضد تکرار قطعی 🔴
-                    # تلگرام پیام‌ها رو از جدید به قدیم میده. 
-                    # اگر به پیامی رسیدیم که آیدیش مساوی یا کوچکتر از دفعه قبل بود،
-                    # یعنی این پیام و تمام پیام‌های بعدیش تکراریه! پس همونجا متوقف میشیم.
+                # 🔴 پیام‌ها از قدیمی به جدید بررسی می‌شوند 🔴
+                for m in reversed(msgs):
+                    
+                    # اگر پیام رو قبلا خوندیم، ردش کن
                     if m.id <= last_processed_id:
-                        break
+                        continue
                     
                     # جلوگیری از ارسال پیام‌های خیلی قدیمی در اجرای اول (وقتی دیتابیس خالیه)
                     if last_processed_id == 0 and m.date < fallback_limit:
-                        break
+                        continue
                     
-                    # آپدیت کردن بزرگترین آیدی که در این دور دیدیم
-                    if m.id > max_id_this_run:
-                        max_id_this_run = m.id
-
                     # --- 1. چک کردن متن ---
                     if m.text:
                         clean_configs = extract_configs(m.text)
@@ -147,6 +146,10 @@ async def main_bot_logic():
                                     os.remove(path)
                                     found_count += 1
                 
+                    # آپدیت کردن بزرگترین آیدی که با موفقیت بررسی شد
+                    if m.id > max_id_this_run:
+                        max_id_this_run = m.id
+
                 # ذخیره آخرین آیدی این کانال در حافظه
                 db[ch] = max_id_this_run
                 
@@ -166,10 +169,16 @@ async def main_bot_logic():
         log(f"❌ CRITICAL ERROR: {e}")
 
 def start_background_loop():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(main_bot_logic())
-    loop.close()
+    global is_bot_running
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(main_bot_logic())
+        loop.close()
+    finally:
+        # وقتی کار ربات تموم شد، قفل رو باز می‌کنه
+        with lock:
+            is_bot_running = False
 
 @app.route('/')
 def home():
@@ -177,6 +186,16 @@ def home():
 
 @app.route('/run')
 def trigger():
+    global is_bot_running
+    
+    with lock:
+        # اگر ربات در حال اجرا باشه، دستور کرون جاب رو با احترام رد می‌کنه تا تداخل پیش نیاد
+        if is_bot_running:
+            return "Bot is already running. Skipped this trigger to prevent overlap.", 200
+        
+        # اگر آزاد بود، قفل رو فعال می‌کنه و ربات رو استارت می‌زنه
+        is_bot_running = True
+        
     Thread(target=start_background_loop, daemon=True).start()
     return "Triggered bot successfully!", 200
 
