@@ -48,7 +48,8 @@ def save_db(data):
 
 def send_text_via_bridge(text):
     try:
-        requests.post(f"{BRIDGE_URL}/send_text", json={"text": text}, timeout=15)
+        # زمان انتظار از ۱۵ به ۶۰ ثانیه افزایش یافت
+        requests.post(f"{BRIDGE_URL}/send_text", json={"text": text}, timeout=60)
         log("      ✅ Text sent to Bale")
     except Exception as e: log(f"      ❌ Bridge Text Error: {e}")
 
@@ -57,7 +58,8 @@ def send_file_via_bridge(path, caption=""):
         with open(path, 'rb') as f:
             files = {'file': f}
             data = {'caption': caption}
-            requests.post(f"{BRIDGE_URL}/send_file", data=data, files=files, timeout=60)
+            # زمان انتظار از ۶۰ به ۱۲۰ ثانیه افزایش یافت
+            requests.post(f"{BRIDGE_URL}/send_file", data=data, files=files, timeout=120)
         log("      ✅ File sent to Bale")
     except Exception as e: log(f"      ❌ Bridge File Error: {e}")
 
