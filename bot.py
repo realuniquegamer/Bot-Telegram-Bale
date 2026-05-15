@@ -15,13 +15,16 @@ LOGIN_KEY = os.environ.get("LOGIN_KEY", "")
 # کانال مقصد تو
 MY_CHANNEL = '@Hame_Yeja'
 
-# لیست ۲۰ کانال منبع
+# لیست یکپارچه و بدون تکرار کانال‌های منبع (۳۲ کانال)
 TARGET_CHANNELS = [
     '@Skyportall', '@ultrasurf_12', '@GuessWhaat', '@Do1rcci',
     '@JynMarket', '@crayingroom', '@IDeathBirth', '@RezZonez',
     '@SPIDER_CONFIG', '@saministamm', '@xixv2ray', '@Configir98',
     '@Begoo_VPN', '@zedmodeonvpn', '@prrofile_purple', '@DirectVPN',
-    '@marambashi2', '@TEHRANARGO', '@lightning6', '@servergod2'
+    '@marambashi2', '@TEHRANARGO', '@lightning6', '@servergod2',
+    '@madzteam', '@EfixVPN', '@tasiyanc', '@mitivpn',
+    '@v2rayng_proxymelli', '@ConfigX2ray', '@netmelli15', '@appxa',
+    '@Config_HATunnel', '@khabari', '@Spotify_Porteghali', '@ironpv'
 ]
 
 DB_FILE = 'last_processed_ids.json'
@@ -55,7 +58,7 @@ async def main_bot_logic():
         # در اولین اجرا، پیام‌های ۱۰ دقیقه اخیر را بررسی می‌کند
         fallback_limit = now - timedelta(minutes=10)
 
-        log(f"--- 🚀 Shoveling Started (Direct to Telegram) at: {now.strftime('%H:%M')} ---")
+        log(f"--- 🚀 Ultimate Shoveling Started at: {now.strftime('%H:%M')} ---")
 
         for ch in TARGET_CHANNELS:
             try:
@@ -69,20 +72,22 @@ async def main_bot_logic():
                     if m.id <= last_processed_id: continue
                     if last_processed_id == 0 and m.date < fallback_limit: continue
                     
-                    # ۱. ارسال متن بدون هیچ محدودیتی
-                    if m.text and len(m.text.strip()) > 5:
-                        log(f"📝 Forwarding text from {ch} to {MY_CHANNEL}")
-                        await client.send_message(MY_CHANNEL, m.text)
-
-                    # ۲. ارسال فایل (فقط پسوندهای مجاز کانفیگ و اپلیکیشن)
-                    if m.file:
-                        file_name = m.file.name.lower() if m.file.name else ""
-                        allowed_exts = ['.npvt', '.napsternetv', '.apk', '.conf', '.txt', '.json']
-                        if any(file_name.endswith(ext) for ext in allowed_exts):
-                            log(f"⬇️ Transferring file from {ch} to {MY_CHANNEL}")
-                            # ارسال مستقیم فایل در بستر تلگرام
+                    try:
+                        # اگر پیام دارای هرگونه مدیا باشد (عکس، ویدئو، فایل کانفیگ، ویس و...)
+                        if m.media:
+                            log(f"🖼️/📁 Transferring media/file from {ch} to {MY_CHANNEL}")
+                            # فایل به همراه متن زیرش (کپشن) ارسال می‌شود
                             await client.send_file(MY_CHANNEL, m.media, caption=m.text or "")
+                        
+                        # اگر پیام فقط یک متن ساده باشد
+                        elif m.text:
+                            log(f"📝 Forwarding text from {ch} to {MY_CHANNEL}")
+                            await client.send_message(MY_CHANNEL, m.text)
                     
+                    except Exception as e:
+                        log(f"⚠️ Failed to send a specific message from {ch}: {e}")
+                    
+                    # آپدیت کردن آیدی پیام برای جلوگیری از ارسال تکراری در دفعات بعد
                     if m.id > max_id_this_run: max_id_this_run = m.id
 
                 db[ch] = max_id_this_run
@@ -106,7 +111,7 @@ def start_background_loop():
         with lock: is_bot_running = False
 
 @app.route('/')
-def home(): return "Telegram Shovel Bot is Active!"
+def home(): return "Telegram Ultimate Shovel Bot is Active!"
 
 @app.route('/run')
 def trigger():
