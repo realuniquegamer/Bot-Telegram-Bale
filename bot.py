@@ -76,20 +76,22 @@ async def main_bot_logic():
                             log(f"🖼️/📁 Transferring media from {ch} to {MY_CHANNEL}")
                             await client.send_message(
                                 MY_CHANNEL,
-                                m.text or "",  # متن کپشن
-                                file=m.media,  # خود فایل/مدیا
-                                formatting_entities=m.entities, # حفظ کامل فرمت‌ها (مثل فلش بازشونده)
-                                link_preview=False # جلوگیری از نمایش باکس مزاحم لینک‌ها
+                                m.message or "",  # دریافت متن کاملا خام از سرور تلگرام برای جلوگیری از مارک‌داون‌های مزاحم
+                                file=m.media,
+                                formatting_entities=m.entities, # حفظ استایل‌های اورجینال
+                                parse_mode=None, # خاموش کردن تبدیل خودکار برای جلوگیری از تولید ستاره‌های اضافی
+                                link_preview=False
                             )
                         
                         # اگر پیام فقط متن ساده باشد
-                        elif m.text:
+                        elif m.message:
                             log(f"📝 Forwarding text from {ch} to {MY_CHANNEL}")
                             await client.send_message(
                                 MY_CHANNEL,
-                                m.text,
-                                formatting_entities=m.entities, # حفظ کامل فرمت‌ها
-                                link_preview=False # جلوگیری از نمایش باکس مزاحم لینک‌ها
+                                m.message,  # متن کاملا خام
+                                formatting_entities=m.entities, # حفظ استایل‌های اورجینال
+                                parse_mode=None, # خاموش کردن مارک‌داون
+                                link_preview=False
                             )
                     
                     except Exception as e:
