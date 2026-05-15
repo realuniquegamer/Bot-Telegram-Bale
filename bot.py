@@ -1,23 +1,21 @@
 import os
 import json
 import asyncio
-import requests
-import re
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from flask import Flask
 from threading import Thread, Lock
 
-# --- تنظیمات و دریافت اطلاعات سری ---
+# --- تنظیمات و دریافت اطلاعات از رندر ---
 API_ID = int(os.environ.get("APP_ID", 0))
 API_HASH = os.environ.get("APP_HASH", "")
 LOGIN_KEY = os.environ.get("LOGIN_KEY", "")
 
-# آدرس پل در هاگینگ فیس
-BRIDGE_URL = 'https://bahadorjadid-py-text-processor.hf.space'
+# کانال مقصد تو
+MY_CHANNEL = '@Hame_Yeja'
 
-# لیست ۲۰ کانال جدید و قدیمی تو
+# لیست ۲۰ کانال منبع
 TARGET_CHANNELS = [
     '@Skyportall', '@ultrasurf_12', '@GuessWhaat', '@Do1rcci',
     '@JynMarket', '@crayingroom', '@IDeathBirth', '@RezZonez',
@@ -46,35 +44,22 @@ def save_db(data):
         with open(DB_FILE, 'w') as f: json.dump(data, f)
     except Exception as e: log(f"⚠️ DB Save Error: {e}")
 
-def send_text_via_bridge(text):
-    try:
-        # زمان انتظار از ۱۵ به ۶۰ ثانیه افزایش یافت
-        requests.post(f"{BRIDGE_URL}/send_text", json={"text": text}, timeout=60)
-        log("      ✅ Text sent to Bale")
-    except Exception as e: log(f"      ❌ Bridge Text Error: {e}")
-
-def send_file_via_bridge(path, caption=""):
-    try:
-        with open(path, 'rb') as f:
-            files = {'file': f}
-            data = {'caption': caption}
-            # زمان انتظار از ۶۰ به ۱۲۰ ثانیه افزایش یافت
-            requests.post(f"{BRIDGE_URL}/send_file", data=data, files=files, timeout=120)
-        log("      ✅ File sent to Bale")
-    except Exception as e: log(f"      ❌ Bridge File Error: {e}")
-
 async def main_bot_logic():
     try:
+        # اتصال مستقیم به تلگرام
         client = TelegramClient(StringSession(LOGIN_KEY), API_ID, API_HASH)
         await client.start()
+        
         db = load_db()
         now = datetime.now(timezone.utc)
-        fallback_limit = now - timedelta(minutes=10) # در اولین اجرا فقط ۱۰ دقیقه اخیر رو بگیر
+        # در اولین اجرا، پیام‌های ۱۰ دقیقه اخیر را بررسی می‌کند
+        fallback_limit = now - timedelta(minutes=10)
 
-        log(f"--- 🚀 Shoveling Started at: {now.strftime('%H:%M')} ---")
+        log(f"--- 🚀 Shoveling Started (Direct to Telegram) at: {now.strftime('%H:%M')} ---")
 
         for ch in TARGET_CHANNELS:
             try:
+                # گرفتن ۵۰ پیام اخیر از هر کانال
                 msgs = await client.get_messages(ch, limit=50)
                 last_processed_id = db.get(ch, 0)
                 max_id_this_run = last_processed_id
@@ -84,20 +69,19 @@ async def main_bot_logic():
                     if m.id <= last_processed_id: continue
                     if last_processed_id == 0 and m.date < fallback_limit: continue
                     
-                    # ۱. ارسال متن (هر متنی که وجود داشته باشه رو می‌فرستیم - بدون فیلتر)
+                    # ۱. ارسال متن بدون هیچ محدودیتی
                     if m.text and len(m.text.strip()) > 5:
-                        log(f"    📝 Forwarding text from {ch}")
-                        send_text_via_bridge(m.text)
+                        log(f"📝 Forwarding text from {ch} to {MY_CHANNEL}")
+                        await client.send_message(MY_CHANNEL, m.text)
 
-                    # ۲. ارسال فایل (کانفیگ‌ها و فایل‌های اجرایی)
+                    # ۲. ارسال فایل (فقط پسوندهای مجاز کانفیگ و اپلیکیشن)
                     if m.file:
                         file_name = m.file.name.lower() if m.file.name else ""
                         allowed_exts = ['.npvt', '.napsternetv', '.apk', '.conf', '.txt', '.json']
                         if any(file_name.endswith(ext) for ext in allowed_exts):
-                            log(f"    ⬇️ Downloading file from {ch}")
-                            path = await m.download_media()
-                            send_file_via_bridge(path, m.text or "")
-                            if os.path.exists(path): os.remove(path)
+                            log(f"⬇️ Transferring file from {ch} to {MY_CHANNEL}")
+                            # ارسال مستقیم فایل در بستر تلگرام
+                            await client.send_file(MY_CHANNEL, m.media, caption=m.text or "")
                     
                     if m.id > max_id_this_run: max_id_this_run = m.id
 
@@ -107,9 +91,9 @@ async def main_bot_logic():
 
         save_db(db)
         await client.disconnect()
-        log("--- 🏁 Cycle Finished ---")
+        log("--- 🏁 Cycle Finished Successfully ---")
     except Exception as e:
-        log(f"❌ CRITICAL: {e}")
+        log(f"❌ CRITICAL ERROR: {e}")
 
 def start_background_loop():
     global is_bot_running
@@ -122,7 +106,7 @@ def start_background_loop():
         with lock: is_bot_running = False
 
 @app.route('/')
-def home(): return "Bot is Active!"
+def home(): return "Telegram Shovel Bot is Active!"
 
 @app.route('/run')
 def trigger():
