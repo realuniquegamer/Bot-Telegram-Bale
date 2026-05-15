@@ -15,7 +15,7 @@ LOGIN_KEY = os.environ.get("LOGIN_KEY", "")
 # کانال مقصد تو
 MY_CHANNEL = '@Hame_Yeja'
 
-# لیست یکپارچه و بدون تکرار کانال‌های منبع (۳۲ کانال)
+# لیست ۳۲ کانال منبع (بدون تکراری)
 TARGET_CHANNELS = [
     '@Skyportall', '@ultrasurf_12', '@GuessWhaat', '@Do1rcci',
     '@JynMarket', '@crayingroom', '@IDeathBirth', '@RezZonez',
@@ -58,36 +58,43 @@ async def main_bot_logic():
         # در اولین اجرا، پیام‌های ۱۰ دقیقه اخیر را بررسی می‌کند
         fallback_limit = now - timedelta(minutes=10)
 
-        log(f"--- 🚀 Ultimate Shoveling Started at: {now.strftime('%H:%M')} ---")
+        log(f"--- 🚀 Ultimate Perfect Shoveling Started at: {now.strftime('%H:%M')} ---")
 
         for ch in TARGET_CHANNELS:
             try:
-                # گرفتن ۵۰ پیام اخیر از هر کانال
                 msgs = await client.get_messages(ch, limit=50)
                 last_processed_id = db.get(ch, 0)
                 max_id_this_run = last_processed_id
                 
-                # بررسی پیام‌ها از قدیمی به جدید
                 for m in reversed(msgs):
                     if m.id <= last_processed_id: continue
                     if last_processed_id == 0 and m.date < fallback_limit: continue
                     
                     try:
-                        # اگر پیام دارای هرگونه مدیا باشد (عکس، ویدئو، فایل کانفیگ، ویس و...)
+                        # اگر پیام دارای مدیا باشد (فایل، عکس، ویدئو)
                         if m.media:
-                            log(f"🖼️/📁 Transferring media/file from {ch} to {MY_CHANNEL}")
-                            # فایل به همراه متن زیرش (کپشن) ارسال می‌شود
-                            await client.send_file(MY_CHANNEL, m.media, caption=m.text or "")
+                            log(f"🖼️/📁 Transferring media from {ch} to {MY_CHANNEL}")
+                            await client.send_message(
+                                MY_CHANNEL,
+                                m.text or "",  # متن کپشن
+                                file=m.media,  # خود فایل/مدیا
+                                formatting_entities=m.entities, # حفظ کامل فرمت‌ها (مثل فلش بازشونده)
+                                link_preview=False # جلوگیری از نمایش باکس مزاحم لینک‌ها
+                            )
                         
-                        # اگر پیام فقط یک متن ساده باشد
+                        # اگر پیام فقط متن ساده باشد
                         elif m.text:
                             log(f"📝 Forwarding text from {ch} to {MY_CHANNEL}")
-                            await client.send_message(MY_CHANNEL, m.text)
+                            await client.send_message(
+                                MY_CHANNEL,
+                                m.text,
+                                formatting_entities=m.entities, # حفظ کامل فرمت‌ها
+                                link_preview=False # جلوگیری از نمایش باکس مزاحم لینک‌ها
+                            )
                     
                     except Exception as e:
-                        log(f"⚠️ Failed to send a specific message from {ch}: {e}")
+                        log(f"⚠️ Failed to send message {m.id} from {ch}: {e}")
                     
-                    # آپدیت کردن آیدی پیام برای جلوگیری از ارسال تکراری در دفعات بعد
                     if m.id > max_id_this_run: max_id_this_run = m.id
 
                 db[ch] = max_id_this_run
@@ -96,7 +103,7 @@ async def main_bot_logic():
 
         save_db(db)
         await client.disconnect()
-        log("--- 🏁 Cycle Finished Successfully ---")
+        log("--- 🏁 Perfect Cycle Finished Successfully ---")
     except Exception as e:
         log(f"❌ CRITICAL ERROR: {e}")
 
@@ -111,7 +118,7 @@ def start_background_loop():
         with lock: is_bot_running = False
 
 @app.route('/')
-def home(): return "Telegram Ultimate Shovel Bot is Active!"
+def home(): return "Telegram Ultimate Perfect Shovel Bot is Active!"
 
 @app.route('/run')
 def trigger():
