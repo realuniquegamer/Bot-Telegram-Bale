@@ -16,14 +16,14 @@ LOGIN_KEY = os.environ.get("LOGIN_KEY", "")
 # کانال مقصد تو
 MY_CHANNEL = '@Hame_Yeja'
 
-# لیست ۳۲ کانال منبع (بدون تکراری)
+# لیست کانال‌های منبع (بدون تکراری و با حذف madzteam که قفل بود)
 TARGET_CHANNELS = [
     '@Skyportall', '@ultrasurf_12', '@GuessWhaat', '@Do1rcci',
     '@JynMarket', '@crayingroom', '@IDeathBirth', '@RezZonez',
     '@SPIDER_CONFIG', '@saministamm', '@xixv2ray', '@Configir98',
     '@Begoo_VPN', '@zedmodeonvpn', '@prrofile_purple', '@DirectVPN',
     '@marambashi2', '@TEHRANARGO', '@lightning6', '@servergod2',
-    '@madzteam', '@EfixVPN', '@tasiyanc', '@mitivpn',
+    '@EfixVPN', '@tasiyanc', '@mitivpn',
     '@v2rayng_proxymelli', '@ConfigX2ray', '@netmelli15', '@appxa',
     '@Config_HATunnel', '@khabari', '@Spotify_Porteghali', '@ironpv'
 ]
