@@ -3,6 +3,7 @@ import json
 import asyncio
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
+from telethon.tl.types import Channel
 from telethon.sessions import StringSession
 from flask import Flask
 from threading import Thread, Lock
@@ -62,7 +63,24 @@ async def main_bot_logic():
 
         for ch in TARGET_CHANNELS:
             try:
-                msgs = await client.get_messages(ch, limit=50)
+                # تریک اول: دریافت اطلاعات دقیق موجودیت (Entity) قبل از گرفتن پیام
+                try:
+                    entity = await client.get_entity(ch)
+                except Exception as e:
+                    log(f"⚠️ نمی‌توانم اطلاعات {ch} را بگیرم (شاید یوزرنیم حذف شده باشد): {e}")
+                    continue
+
+                # تریک دوم: فیلتر کردن دقیق گروه‌ها! (فقط کانال‌های برودکست مجاز هستند)
+                if getattr(entity, 'broadcast', None) is not True:
+                    log(f"🚫 اخطار امنیتی: آیدی {ch} یک کانال نیست! (احتمالا گروه است). نادیده گرفته شد.")
+                    continue
+                
+                channel_title = getattr(entity, 'title', ch)
+                channel_id = getattr(entity, 'id', 'Unknown')
+                log(f"🔍 بررسی کانال: {channel_title} | ID: {channel_id}")
+
+                # حالا با خیال راحت پیام‌ها رو می‌گیریم چون مطمئنیم کاناله
+                msgs = await client.get_messages(entity, limit=50)
                 last_processed_id = db.get(ch, 0)
                 max_id_this_run = last_processed_id
                 
@@ -73,7 +91,7 @@ async def main_bot_logic():
                     try:
                         # اگر پیام دارای مدیا باشد (فایل، عکس، ویدئو)
                         if m.media:
-                            log(f"🖼️/📁 Transferring media from {ch} to {MY_CHANNEL}")
+                            log(f"🖼️/📁 انتقال مدیا از {channel_title} به {MY_CHANNEL}")
                             await client.send_message(
                                 MY_CHANNEL,
                                 m.message or "",  # دریافت متن کاملا خام از سرور تلگرام برای جلوگیری از مارک‌داون‌های مزاحم
@@ -85,7 +103,7 @@ async def main_bot_logic():
                         
                         # اگر پیام فقط متن ساده باشد
                         elif m.message:
-                            log(f"📝 Forwarding text from {ch} to {MY_CHANNEL}")
+                            log(f"📝 انتقال متن از {channel_title} به {MY_CHANNEL}")
                             await client.send_message(
                                 MY_CHANNEL,
                                 m.message,  # متن کاملا خام
@@ -95,13 +113,13 @@ async def main_bot_logic():
                             )
                     
                     except Exception as e:
-                        log(f"⚠️ Failed to send message {m.id} from {ch}: {e}")
+                        log(f"⚠️ خطا در ارسال پیام {m.id} از {ch}: {e}")
                     
                     if m.id > max_id_this_run: max_id_this_run = m.id
 
                 db[ch] = max_id_this_run
             except Exception as e:
-                log(f"⚠️ Error in channel {ch}: {e}")
+                log(f"⚠️ خطای کلی در پردازش آیدی {ch}: {e}")
 
         save_db(db)
         await client.disconnect()
