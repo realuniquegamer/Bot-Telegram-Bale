@@ -5,7 +5,6 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import MessageMediaWebPage
 from flask import Flask
 from threading import Thread, Lock
 
@@ -54,6 +53,7 @@ async def main_bot_logic():
         await client.start()
         
         db = load_db()
+        # آرایه هش‌ها برای فیلتر سخت‌گیرانه متن‌های تکراری
         seen_hashes = db.get('seen_hashes', [])
         
         now = datetime.now(timezone.utc)
@@ -81,18 +81,19 @@ async def main_bot_logic():
                     if m.id <= last_processed_id: continue
                     if last_processed_id == 0 and m.date < fallback_limit: continue
                     
+                    # استخراج متن پیام برای بررسی تکراری بودن رشته کانفیگ
                     msg_text = m.message or ""
                     text_hash = None
                     
                     if msg_text:
                         text_hash = hashlib.sha256(msg_text.encode('utf-8')).hexdigest()
                         if text_hash in seen_hashes:
+                            log(f"♻️ پیام تکراری در {channel_title} فیلتر شد.")
                             if m.id > max_id_this_run: max_id_this_run = m.id
                             continue
                     
                     try:
-                        # بررسی: اگر مدیا هست و "وب‌پیج" نیست (یعنی فایل واقعیه)
-                        if m.media and not isinstance(m.media, MessageMediaWebPage):
+                        if m.media:
                             log(f"🖼️/📁 انتقال مدیا از {channel_title}")
                             await client.send_message(
                                 MY_CHANNEL,
@@ -102,9 +103,8 @@ async def main_bot_logic():
                                 parse_mode=None,
                                 link_preview=False
                             )
-                            await asyncio.sleep(2) 
+                            await asyncio.sleep(2) # وقفه حیاتی برای جلوگیری از لیمیت تلگرام
                         
-                        # اگر فقط متنه (یا مدیا بوده ولی فقط لینک پیش‌نمایشه)
                         elif msg_text:
                             log(f"📝 انتقال متن از {channel_title}")
                             await client.send_message(
@@ -114,10 +114,12 @@ async def main_bot_logic():
                                 parse_mode=None,
                                 link_preview=False
                             )
-                            await asyncio.sleep(2) 
+                            await asyncio.sleep(2) # وقفه حیاتی برای جلوگیری از لیمیت تلگرام
                         
+                        # ثبت هش در دیتابیس پس از ارسال موفق
                         if text_hash:
                             seen_hashes.append(text_hash)
+                            # نگهداری فقط ۵۰۰۰ هش آخر برای جلوگیری از پر شدن حافظه
                             if len(seen_hashes) > 5000:
                                 seen_hashes = seen_hashes[-5000:]
                                 
