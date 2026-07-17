@@ -1,21 +1,22 @@
 import os
 import json
 import asyncio
-import hashlib
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
+from telethon.tl.types import Channel
 from telethon.sessions import StringSession
 from flask import Flask
 from threading import Thread, Lock
 
-# --- تنظیمات و دریافت اطلاعات ---
+# --- تنظیمات و دریافت اطلاعات از رندر ---
 API_ID = int(os.environ.get("APP_ID", 0))
 API_HASH = os.environ.get("APP_HASH", "")
 LOGIN_KEY = os.environ.get("LOGIN_KEY", "")
 
-# کانال مقصد
+# کانال مقصد تو
 MY_CHANNEL = '@Hame_Yeja'
 
+# لیست کانال‌های منبع (بدون تکراری و با حذف madzteam که قفل بود)
 TARGET_CHANNELS = [
     '@Skyportall', '@ultrasurf_12', '@GuessWhaat', '@Do1rcci',
     '@JynMarket', '@crayingroom', '@IDeathBirth', '@RezZonez',
@@ -49,30 +50,36 @@ def save_db(data):
 
 async def main_bot_logic():
     try:
+        # اتصال مستقیم به تلگرام
         client = TelegramClient(StringSession(LOGIN_KEY), API_ID, API_HASH)
         await client.start()
         
         db = load_db()
-        # آرایه هش‌ها برای فیلتر سخت‌گیرانه متن‌های تکراری
-        seen_hashes = db.get('seen_hashes', [])
-        
         now = datetime.now(timezone.utc)
+        # در اولین اجرا، پیام‌های ۱۰ دقیقه اخیر را بررسی می‌کند
         fallback_limit = now - timedelta(minutes=10)
 
         log(f"--- 🚀 Ultimate Perfect Shoveling Started at: {now.strftime('%H:%M')} ---")
 
         for ch in TARGET_CHANNELS:
             try:
+                # تریک اول: دریافت اطلاعات دقیق موجودیت (Entity) قبل از گرفتن پیام
                 try:
                     entity = await client.get_entity(ch)
                 except Exception as e:
-                    log(f"⚠️ نمی‌توانم اطلاعات {ch} را بگیرم: {e}")
+                    log(f"⚠️ نمی‌توانم اطلاعات {ch} را بگیرم (شاید یوزرنیم حذف شده باشد): {e}")
                     continue
 
+                # تریک دوم: فیلتر کردن دقیق گروه‌ها! (فقط کانال‌های برودکست مجاز هستند)
                 if getattr(entity, 'broadcast', None) is not True:
+                    log(f"🚫 اخطار امنیتی: آیدی {ch} یک کانال نیست! (احتمالا گروه است). نادیده گرفته شد.")
                     continue
                 
                 channel_title = getattr(entity, 'title', ch)
+                channel_id = getattr(entity, 'id', 'Unknown')
+                log(f"🔍 بررسی کانال: {channel_title} | ID: {channel_id}")
+
+                # حالا با خیال راحت پیام‌ها رو می‌گیریم چون مطمئنیم کاناله
                 msgs = await client.get_messages(entity, limit=50)
                 last_processed_id = db.get(ch, 0)
                 max_id_this_run = last_processed_id
@@ -81,48 +88,30 @@ async def main_bot_logic():
                     if m.id <= last_processed_id: continue
                     if last_processed_id == 0 and m.date < fallback_limit: continue
                     
-                    # استخراج متن پیام برای بررسی تکراری بودن رشته کانفیگ
-                    msg_text = m.message or ""
-                    text_hash = None
-                    
-                    if msg_text:
-                        text_hash = hashlib.sha256(msg_text.encode('utf-8')).hexdigest()
-                        if text_hash in seen_hashes:
-                            log(f"♻️ پیام تکراری در {channel_title} فیلتر شد.")
-                            if m.id > max_id_this_run: max_id_this_run = m.id
-                            continue
-                    
                     try:
+                        # اگر پیام دارای مدیا باشد (فایل، عکس، ویدئو)
                         if m.media:
-                            log(f"🖼️/📁 انتقال مدیا از {channel_title}")
+                            log(f"🖼️/📁 انتقال مدیا از {channel_title} به {MY_CHANNEL}")
                             await client.send_message(
                                 MY_CHANNEL,
-                                msg_text,
+                                m.message or "",  # دریافت متن کاملا خام از سرور تلگرام برای جلوگیری از مارک‌داون‌های مزاحم
                                 file=m.media,
-                                formatting_entities=m.entities,
-                                parse_mode=None,
+                                formatting_entities=m.entities, # حفظ استایل‌های اورجینال
+                                parse_mode=None, # خاموش کردن تبدیل خودکار برای جلوگیری از تولید ستاره‌های اضافی
                                 link_preview=False
                             )
-                            await asyncio.sleep(2) # وقفه حیاتی برای جلوگیری از لیمیت تلگرام
                         
-                        elif msg_text:
-                            log(f"📝 انتقال متن از {channel_title}")
+                        # اگر پیام فقط متن ساده باشد
+                        elif m.message:
+                            log(f"📝 انتقال متن از {channel_title} به {MY_CHANNEL}")
                             await client.send_message(
                                 MY_CHANNEL,
-                                msg_text,
-                                formatting_entities=m.entities,
-                                parse_mode=None,
+                                m.message,  # متن کاملا خام
+                                formatting_entities=m.entities, # حفظ استایل‌های اورجینال
+                                parse_mode=None, # خاموش کردن مارک‌داون
                                 link_preview=False
                             )
-                            await asyncio.sleep(2) # وقفه حیاتی برای جلوگیری از لیمیت تلگرام
-                        
-                        # ثبت هش در دیتابیس پس از ارسال موفق
-                        if text_hash:
-                            seen_hashes.append(text_hash)
-                            # نگهداری فقط ۵۰۰۰ هش آخر برای جلوگیری از پر شدن حافظه
-                            if len(seen_hashes) > 5000:
-                                seen_hashes = seen_hashes[-5000:]
-                                
+                    
                     except Exception as e:
                         log(f"⚠️ خطا در ارسال پیام {m.id} از {ch}: {e}")
                     
@@ -132,7 +121,6 @@ async def main_bot_logic():
             except Exception as e:
                 log(f"⚠️ خطای کلی در پردازش آیدی {ch}: {e}")
 
-        db['seen_hashes'] = seen_hashes
         save_db(db)
         await client.disconnect()
         log("--- 🏁 Perfect Cycle Finished Successfully ---")
