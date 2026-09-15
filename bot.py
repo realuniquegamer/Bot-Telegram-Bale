@@ -19,7 +19,7 @@ MY_CHANNEL = '@Hame_Yeja'
 # لیست کانال‌های منبع (بدون تکراری و با حذف madzteam که قفل بود)
 TARGET_CHANNELS = [
     '@Skyportall', '@ultrasurf_12', '@GuessWhaat', '@Do1rcci',
-    '@JynMarket', '@crayingroom', '@IDeathBirth', '@RezZonez',
+    '@JynMarket', '@IDeathBirth', '@RezZonez',
     '@SPIDER_CONFIG', '@saministamm', '@xixv2ray', '@Configir98',
     '@Begoo_VPN', '@zedmodeonvpn', '@prrofile_purple', '@DirectVPN',
     '@marambashi2', '@TEHRANARGO', '@lightning6', '@servergod2',
