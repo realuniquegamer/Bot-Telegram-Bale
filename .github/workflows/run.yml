@@ -1,31 +1,41 @@
-name: Check Telegram & Send to Bale
+name: Telegram Auto Forward Bot
 
 on:
-  repository_dispatch:
-    types: [start-bot-trigger]
+  schedule:
+    - cron: '*/10 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install telethon requests
+        run: pip install -r requirements.txt
 
       - name: Run Bot
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_HASH: ${{ secrets.APP_HASH }}
-          BALE_TOKEN: ${{ secrets.BALE_TOKEN }}
           LOGIN_KEY: ${{ secrets.LOGIN_KEY }}
         run: python bot.py
+
+      - name: Save progress
+        run: |
+          if [ -f last_processed_ids.json ]; then
+            git config user.name "bot-auto-commit"
+            git config user.email "actions@github.com"
+            git add last_processed_ids.json
+            git diff --cached --quiet || git commit -m "update progress [skip ci]"
+            git push
+          fi
