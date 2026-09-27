@@ -3,153 +3,124 @@ import json
 import asyncio
 from datetime import datetime, timedelta, timezone
 from telethon import TelegramClient
-from telethon.tl.types import Channel
 from telethon.sessions import StringSession
-from flask import Flask
-from threading import Thread, Lock
 
-# --- تنظیمات و دریافت اطلاعات از رندر ---
+# --- تنظیمات (از Secrets گیت‌هاب خونده می‌شن) ---
 API_ID = int(os.environ.get("APP_ID", 0))
 API_HASH = os.environ.get("APP_HASH", "")
 LOGIN_KEY = os.environ.get("LOGIN_KEY", "")
 
-# کانال مقصد تو
+# کانال مقصد
 MY_CHANNEL = '@Hame_Yeja'
 
-# لیست کانال‌های منبع (بدون تکراری و با حذف madzteam که قفل بود)
+# لیست کانال‌های منبع
 TARGET_CHANNELS = [
-    
-    '@JynMarket', 
+    '@JynMarket',
     '@xixv2ray', '@Configir98',
     '@Begoo_VPN', '@zedmodeonvpn', '@prrofile_purple', '@DirectVPN',
     '@marambashi2', '@TEHRANARGO', '@lightning6', '@servergod2',
     '@mitivpn',
     '@v2rayng_proxymelli', '@ConfigX2ray', '@netmelli15', '@appxa',
-    '@khabari', '@Spotify_Porteghali', '@ironpv', '@irMARTIN', '@Gp_config', 
+    '@khabari', '@Spotify_Porteghali', '@ironpv', '@irMARTIN', '@Gp_config',
     '@Frenpv'
 ]
 
 DB_FILE = 'last_processed_ids.json'
-app = Flask(__name__)
-is_bot_running = False
-lock = Lock()
+
 
 def log(msg):
     print(msg, flush=True)
 
+
 def load_db():
     if os.path.exists(DB_FILE):
         try:
-            with open(DB_FILE, 'r') as f: return json.load(f)
-        except Exception: return {}
+            with open(DB_FILE, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {}
     return {}
+
 
 def save_db(data):
     try:
-        with open(DB_FILE, 'w') as f: json.dump(data, f)
-    except Exception as e: log(f"⚠️ DB Save Error: {e}")
+        with open(DB_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        log(f"⚠️ DB Save Error: {e}")
+
 
 async def main_bot_logic():
-    try:
-        # اتصال مستقیم به تلگرام
-        client = TelegramClient(StringSession(LOGIN_KEY), API_ID, API_HASH)
-        await client.start()
-        
-        db = load_db()
-        now = datetime.now(timezone.utc)
-        # در اولین اجرا، پیام‌های ۱۰ دقیقه اخیر را بررسی می‌کند
-        fallback_limit = now - timedelta(minutes=10)
+    client = TelegramClient(StringSession(LOGIN_KEY), API_ID, API_HASH)
+    await client.start()
 
-        log(f"--- 🚀 Ultimate Perfect Shoveling Started at: {now.strftime('%H:%M')} ---")
+    db = load_db()
+    now = datetime.now(timezone.utc)
+    # فقط برای اولین اجرای یک کانال (وقتی هنوز سابقه‌ای ازش نداریم)
+    fallback_limit = now - timedelta(minutes=15)
 
-        for ch in TARGET_CHANNELS:
+    log(f"--- 🚀 Run started at: {now.strftime('%Y-%m-%d %H:%M')} UTC ---")
+
+    for ch in TARGET_CHANNELS:
+        try:
             try:
-                # تریک اول: دریافت اطلاعات دقیق موجودیت (Entity) قبل از گرفتن پیام
-                try:
-                    entity = await client.get_entity(ch)
-                except Exception as e:
-                    log(f"⚠️ نمی‌توانم اطلاعات {ch} را بگیرم (شاید یوزرنیم حذف شده باشد): {e}")
-                    continue
-
-                # تریک دوم: فیلتر کردن دقیق گروه‌ها! (فقط کانال‌های برودکست مجاز هستند)
-                if getattr(entity, 'broadcast', None) is not True:
-                    log(f"🚫 اخطار امنیتی: آیدی {ch} یک کانال نیست! (احتمالا گروه است). نادیده گرفته شد.")
-                    continue
-                
-                channel_title = getattr(entity, 'title', ch)
-                channel_id = getattr(entity, 'id', 'Unknown')
-                log(f"🔍 بررسی کانال: {channel_title} | ID: {channel_id}")
-
-                # حالا با خیال راحت پیام‌ها رو می‌گیریم چون مطمئنیم کاناله
-                msgs = await client.get_messages(entity, limit=50)
-                last_processed_id = db.get(ch, 0)
-                max_id_this_run = last_processed_id
-                
-                for m in reversed(msgs):
-                    if m.id <= last_processed_id: continue
-                    if last_processed_id == 0 and m.date < fallback_limit: continue
-                    
-                    try:
-                        # اگر پیام دارای مدیا باشد (فایل، عکس، ویدئو)
-                        if m.media:
-                            log(f"🖼️/📁 انتقال مدیا از {channel_title} به {MY_CHANNEL}")
-                            await client.send_message(
-                                MY_CHANNEL,
-                                m.message or "",  # دریافت متن کاملا خام از سرور تلگرام برای جلوگیری از مارک‌داون‌های مزاحم
-                                file=m.media,
-                                formatting_entities=m.entities, # حفظ استایل‌های اورجینال
-                                parse_mode=None, # خاموش کردن تبدیل خودکار برای جلوگیری از تولید ستاره‌های اضافی
-                                link_preview=False
-                            )
-                        
-                        # اگر پیام فقط متن ساده باشد
-                        elif m.message:
-                            log(f"📝 انتقال متن از {channel_title} به {MY_CHANNEL}")
-                            await client.send_message(
-                                MY_CHANNEL,
-                                m.message,  # متن کاملا خام
-                                formatting_entities=m.entities, # حفظ استایل‌های اورجینال
-                                parse_mode=None, # خاموش کردن مارک‌داون
-                                link_preview=False
-                            )
-                    
-                    except Exception as e:
-                        log(f"⚠️ خطا در ارسال پیام {m.id} از {ch}: {e}")
-                    
-                    if m.id > max_id_this_run: max_id_this_run = m.id
-
-                db[ch] = max_id_this_run
+                entity = await client.get_entity(ch)
             except Exception as e:
-                log(f"⚠️ خطای کلی در پردازش آیدی {ch}: {e}")
+                log(f"⚠️ نمی‌توانم اطلاعات {ch} را بگیرم: {e}")
+                continue
 
-        save_db(db)
-        await client.disconnect()
-        log("--- 🏁 Perfect Cycle Finished Successfully ---")
-    except Exception as e:
-        log(f"❌ CRITICAL ERROR: {e}")
+            if getattr(entity, 'broadcast', None) is not True:
+                log(f"🚫 {ch} کانال نیست (احتمالا گروهه)، رد شد.")
+                continue
 
-def start_background_loop():
-    global is_bot_running
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(main_bot_logic())
-        loop.close()
-    finally:
-        with lock: is_bot_running = False
+            channel_title = getattr(entity, 'title', ch)
+            channel_id = getattr(entity, 'id', 'Unknown')
+            log(f"🔍 بررسی کانال: {channel_title} | ID: {channel_id}")
 
-@app.route('/')
-def home(): return "Telegram Ultimate Perfect Shovel Bot is Active!"
+            msgs = await client.get_messages(entity, limit=50)
+            last_processed_id = db.get(ch, 0)
+            max_id_this_run = last_processed_id
 
-@app.route('/run')
-def trigger():
-    global is_bot_running
-    with lock:
-        if is_bot_running: return "Already running", 200
-        is_bot_running = True
-    Thread(target=start_background_loop, daemon=True).start()
-    return "Triggered!", 200
+            for m in reversed(msgs):
+                if m.id <= last_processed_id:
+                    continue
+                if last_processed_id == 0 and m.date < fallback_limit:
+                    continue
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+                try:
+                    if m.media:
+                        log(f"🖼️/📁 انتقال مدیا از {channel_title}")
+                        await client.send_message(
+                            MY_CHANNEL,
+                            m.message or "",
+                            file=m.media,
+                            formatting_entities=m.entities,
+                            parse_mode=None,
+                            link_preview=False
+                        )
+                    elif m.message:
+                        log(f"📝 انتقال متن از {channel_title}")
+                        await client.send_message(
+                            MY_CHANNEL,
+                            m.message,
+                            formatting_entities=m.entities,
+                            parse_mode=None,
+                            link_preview=False
+                        )
+                except Exception as e:
+                    log(f"⚠️ خطا در ارسال پیام {m.id} از {ch}: {e}")
+
+                if m.id > max_id_this_run:
+                    max_id_this_run = m.id
+
+            db[ch] = max_id_this_run
+        except Exception as e:
+            log(f"⚠️ خطای کلی در پردازش {ch}: {e}")
+
+    save_db(db)
+    await client.disconnect()
+    log("--- 🏁 Run finished successfully ---")
+
+
+if __name__ == "__main__":
+    asyncio.run(main_bot_logic())
